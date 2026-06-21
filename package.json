@@ -2,7 +2,7 @@
   "name": "jotos",
   "version": "0.1.0",
   "private": true,
-  "description": "Open-source trail, activity and GPS track sharing service prototype.",
+  "description": "Open-source GPX route viewer and map video export tool.",
   "scripts": {
     "start": "vite --host 127.0.0.1",
     "dev": "vite --host 127.0.0.1",
