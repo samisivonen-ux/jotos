@@ -1,0 +1,31 @@
+{
+  "name": "Jotos Steward Agent",
+  "description": "Helps discover, validate and maintain open trail, route and GPS dataset knowledge for Jotos.",
+  "version": "0.1.0",
+  "url": "https://example.com/agents/jotos-steward",
+  "provider": {
+    "organization": "Jotos",
+    "url": "https://example.com"
+  },
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": true
+  },
+  "skills": [
+    {
+      "id": "trail-data-discovery",
+      "name": "Trail data discovery",
+      "description": "Finds reusable open trail datasets and explains their license obligations.",
+      "tags": ["open-data", "trails", "licensing", "osm"]
+    },
+    {
+      "id": "gps-import-review",
+      "name": "GPS import review",
+      "description": "Reviews GPX/FIT/TCX imports for privacy, provenance and publication readiness.",
+      "tags": ["gpx", "privacy", "imports"]
+    }
+  ],
+  "defaultInputModes": ["application/json", "text/plain"],
+  "defaultOutputModes": ["application/json", "text/plain"]
+}

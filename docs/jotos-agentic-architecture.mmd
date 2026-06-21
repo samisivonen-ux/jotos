@@ -1,0 +1,80 @@
+flowchart TB
+  subgraph Channels["Users and partners"]
+    Web["Jotos Web / PWA"]
+    Mobile["Mobile and Web Share"]
+    Agents["MCP agent clients"]
+    Partners["Partner applications"]
+    Garmin["Garmin Connect and devices"]
+    Intervals["Intervals.icu"]
+  end
+
+  subgraph Edge["Public contracts"]
+    AGUI["AG-UI event stream"]
+    REST["REST / OpenAPI 3.1"]
+    MCP["Remote MCP / Streamable HTTP"]
+    A2A["A2A 1.0 / Agent Card"]
+    Webhooks["OAuth 2.1, webhooks and CloudEvents"]
+  end
+
+  subgraph Core["Jotos application core"]
+    Route["Route and Activity Service"]
+    Asset["Asset and Catalog Service"]
+    Privacy["Privacy, consent and provenance"]
+    Jobs["Job Orchestrator"]
+    Connector["Connector Service"]
+    Agent["Jotos Steward Agent"]
+  end
+
+  subgraph Workers["Isolated workers"]
+    Parse["Parse, validate and normalize"]
+    Convert["Format conversion"]
+    Geo["Elevation, simplify and map match"]
+    Render["FFmpeg video and image render"]
+    Package["STAC, Data Package and C2PA"]
+  end
+
+  subgraph Data["Data plane"]
+    S3["S3 originals and derivatives"]
+    PG["PostgreSQL + PostGIS canonical model"]
+    Tiles["S3 PMTiles and map assets"]
+    Events["SQS, EventBridge and Step Functions"]
+    Audit["Consent, lineage and audit log"]
+  end
+
+  Web --> AGUI
+  Web --> REST
+  Mobile --> REST
+  Agents --> MCP
+  Partners --> REST
+  Partners --> A2A
+  Garmin <--> Connector
+  Intervals <--> Connector
+  Webhooks --> Connector
+  AGUI --> Agent
+  MCP --> Agent
+  A2A --> Agent
+  REST --> Route
+  REST --> Asset
+  Agent --> Route
+  Agent --> Asset
+  Agent --> Jobs
+  Connector --> Route
+  Connector --> Jobs
+  Route --> PG
+  Asset --> S3
+  Asset --> PG
+  Privacy --> Audit
+  Route --> Privacy
+  Jobs --> Events
+  Events --> Parse
+  Events --> Convert
+  Events --> Geo
+  Events --> Render
+  Events --> Package
+  Parse --> S3
+  Parse --> PG
+  Convert --> S3
+  Geo --> PG
+  Render --> S3
+  Package --> S3
+  Tiles --> Web

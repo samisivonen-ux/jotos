@@ -1,0 +1,38 @@
+{
+  "name": "jotos-sample-routes",
+  "title": "Jotos Sample Routes",
+  "description": "Sample trail and GPS route data used by the Jotos prototype.",
+  "profile": "data-package",
+  "licenses": [
+    {
+      "name": "ODC-ODbL-1.0",
+      "title": "Open Data Commons Open Database License 1.0",
+      "path": "https://opendatacommons.org/licenses/odbl/1-0/"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Jotos local prototype data",
+      "path": "src/main.ts"
+    }
+  ],
+  "contributors": [
+    {
+      "title": "Jotos contributors",
+      "role": "author"
+    }
+  ],
+  "resources": [
+    {
+      "name": "sample-routes",
+      "path": "src/main.ts",
+      "format": "typescript",
+      "mediatype": "text/typescript",
+      "description": "Embedded sample route geometries for prototype UI development."
+    }
+  ],
+  "custom": {
+    "attribution": "Contains prototype route data. Replace with verified public data before production use.",
+    "privacy": "No personal activity logs should be published in this sample package."
+  }
+}
