@@ -6,7 +6,9 @@
   "scripts": {
     "start": "vite --host 127.0.0.1",
     "dev": "vite --host 127.0.0.1",
+    "dev:connect": "VITE_ENABLE_INTERVALS_CONNECT=true VITE_TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT=https://7fdqktp1k3.execute-api.eu-west-1.amazonaws.com/v1/video/upload-url VITE_TELEGRAM_VIDEO_FINALIZE_ENDPOINT=https://7fdqktp1k3.execute-api.eu-west-1.amazonaws.com/v1/video/finalize vite --host 127.0.0.1",
     "build": "vite build",
+    "build:connect": "VITE_ENABLE_INTERVALS_CONNECT=true VITE_TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT=https://7fdqktp1k3.execute-api.eu-west-1.amazonaws.com/v1/video/upload-url VITE_TELEGRAM_VIDEO_FINALIZE_ENDPOINT=https://7fdqktp1k3.execute-api.eu-west-1.amazonaws.com/v1/video/finalize vite build --outDir dist-connect --base /connect/",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

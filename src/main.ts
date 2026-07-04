@@ -2,15 +2,29 @@ import maplibregl, { addProtocol, type LngLatBoundsLike, type StyleSpecification
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
 import './styles.css';
+import { attributionForSource } from './integrations/attribution';
 
-type TrackPoint = {
+/**
+ * Set at build time only. The standalone Jotos build (jotos-web) ships with
+ * this false and Vite/Rollup dead-code-eliminates the Intervals.icu panel
+ * and client entirely, so that deployment has zero third-party API surface.
+ * The connected build sets VITE_ENABLE_INTERVALS_CONNECT=true.
+ */
+const INTERVALS_CONNECT_ENABLED = import.meta.env.VITE_ENABLE_INTERVALS_CONNECT === 'true';
+
+const TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT = import.meta.env.VITE_TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT as
+  | string
+  | undefined;
+const TELEGRAM_VIDEO_FINALIZE_ENDPOINT = import.meta.env.VITE_TELEGRAM_VIDEO_FINALIZE_ENDPOINT as string | undefined;
+
+export type TrackPoint = {
   lat: number;
   lon: number;
   ele?: number;
   time?: string;
 };
 
-type Trail = {
+export type Trail = {
   id: string;
   title: string;
   region: string;
@@ -21,6 +35,8 @@ type Trail = {
   license: string;
   tags: string[];
   points: TrackPoint[];
+  /** Device/platform attribution line, set when points came from a connected API rather than a local file. */
+  sourceAttribution?: string;
 };
 
 type BasemapId = 'retki' | 'topo' | 'satellite';
@@ -182,6 +198,12 @@ const state = {
   videoOverlays: {
     elevation: true
   },
+  intervalsPanelOpen: false,
+  intervalsApiKey: '',
+  intervalsAthleteId: '',
+  intervalsActivities: [] as import('./integrations/intervals-client').IntervalsActivitySummary[],
+  intervalsStatus: '',
+  intervalsBusy: false,
   elevationPosition: {
     x: 0.03,
     y: 0.68
@@ -1391,6 +1413,20 @@ async function recordRouteVideo(trail: Trail): Promise<void> {
 
     const blob = new Blob([target.buffer], { type: 'video/mp4' });
     const safeTitle = trail.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    if (INTERVALS_CONNECT_ENABLED && TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT && TELEGRAM_VIDEO_FINALIZE_ENDPOINT) {
+      const { isInsideTelegram, sendVideoToTelegram } = await import('./integrations/telegram-video');
+      if (isInsideTelegram()) {
+        await sendVideoToTelegram(
+          blob,
+          { uploadUrlEndpoint: TELEGRAM_VIDEO_UPLOAD_URL_ENDPOINT, finalizeEndpoint: TELEGRAM_VIDEO_FINALIZE_ENDPOINT },
+          (status) => button && (button.textContent = status)
+        );
+        window.alert('Video sent — check your Telegram chat.');
+        return;
+      }
+    }
+
     downloadBlob(blob, `${safeTitle || 'jotos-route'}-${state.videoPreset}.mp4`);
   } catch (error) {
     window.alert(error instanceof Error ? error.message : 'MP4 video creation failed.');
@@ -1806,6 +1842,58 @@ function initializeMap(trail?: Trail, options: { fitTrail?: boolean } = {}): voi
   });
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderIntervalsPanel(): string {
+  if (!INTERVALS_CONNECT_ENABLED) return '';
+
+  const activityList = state.intervalsActivities.length
+    ? `
+      <ul class="intervals-activity-list">
+        ${state.intervalsActivities
+          .map(
+            (activity) => `
+              <li>
+                <span>${escapeHtml(activity.name)}${activity.source ? ` · ${escapeHtml(activity.source)}` : ''}</span>
+                <button type="button" class="text-button" data-intervals-import="${escapeHtml(activity.id)}">Import</button>
+              </li>
+            `
+          )
+          .join('')}
+      </ul>
+    `
+    : '';
+
+  return `
+    <div class="upload-zone intervals-panel">
+      <span>Import from Intervals.icu</span>
+      <strong>Your API key goes straight to Intervals.icu — never stored or sent anywhere else</strong>
+      <button type="button" class="text-button accent" data-intervals-toggle>${state.intervalsPanelOpen ? 'Close' : 'Connect'}</button>
+      ${
+        state.intervalsPanelOpen
+          ? `
+        <div class="intervals-form">
+          <input id="intervals-api-key" type="password" placeholder="Intervals.icu API key" autocomplete="off" value="${escapeHtml(state.intervalsApiKey)}" />
+          <input id="intervals-athlete-id" type="text" placeholder="Athlete ID (optional)" autocomplete="off" value="${escapeHtml(state.intervalsAthleteId)}" />
+          <button type="button" class="text-button" data-intervals-load ${state.intervalsBusy ? 'disabled' : ''}>
+            ${state.intervalsBusy ? 'Loading…' : 'Load recent activities'}
+          </button>
+        </div>
+        ${state.intervalsStatus ? `<p class="intervals-status">${escapeHtml(state.intervalsStatus)}</p>` : ''}
+        ${activityList}
+      `
+          : ''
+      }
+    </div>
+  `;
+}
+
 function renderTrailCard(trail: Trail): string {
   const isSelected = trail.id === state.selectedId;
 
@@ -1814,6 +1902,7 @@ function renderTrailCard(trail: Trail): string {
       <span>
         <strong>${trail.title}</strong>
         <small>${trail.region}</small>
+        ${trail.sourceAttribution ? `<small class="trail-attribution">${trail.sourceAttribution}</small>` : ''}
       </span>
       <span class="trail-meta">${trail.distanceKm} km · ${trail.ascentM} m</span>
     </button>
@@ -1951,6 +2040,8 @@ function render(options: { fitTrail?: boolean } = {}): void {
             <button type="button" class="text-button accent" data-gpx-pick>Choose file</button>
             <input id="gpx-upload" type="file" accept=".gpx,.xml,.txt,.fit,.tcx,application/gpx+xml,application/xml,text/xml,*/*" />
           </label>
+
+          ${renderIntervalsPanel()}
 
           <div class="tool-row">
             <button class="text-button" data-play-route ${selectedTrail ? '' : 'disabled'}>Play route</button>
@@ -2264,6 +2355,36 @@ function bindElevationOverlayDrag(): void {
   window.addEventListener('pointercancel', finishDrag, { signal });
 }
 
+/**
+ * Shared by local GPX upload and any connected-import source (e.g. Intervals.icu):
+ * builds a Trail from points, adds it to the library, and renders it selected.
+ */
+export function addImportedTrail(
+  points: TrackPoint[],
+  meta: { id: string; title: string; region: string; activity: string; tags: string[]; sourceAttribution?: string }
+): void {
+  if (points.length < 2) {
+    throw new Error('The route needs at least two GPS points.');
+  }
+
+  const summary = summarize(points);
+  const importedTrail: Trail = {
+    ...meta,
+    privacy: 'Private',
+    license: 'Not set',
+    points,
+    ...summary
+  };
+
+  state.trails = [importedTrail, ...state.trails];
+  state.selectedId = importedTrail.id;
+  state.trimStartMeters = 0;
+  state.trimEndMeters = 0;
+  state.menuOpen = false;
+  state.routePlaybackVisible = false;
+  render({ fitTrail: true });
+}
+
 function bindEvents(): void {
   bindElevationOverlayDrag();
   document.querySelectorAll<HTMLButtonElement>('[data-trail-id]').forEach((button) => {
@@ -2286,31 +2407,13 @@ function bindEvents(): void {
 
     try {
       const points = parseGpx(await file.text());
-
-      if (points.length < 2) {
-        throw new Error('The file needs at least two GPS points.');
-      }
-
-      const summary = summarize(points);
-      const importedTrail: Trail = {
+      addImportedTrail(points, {
         id: `imported-${Date.now()}`,
         title: file.name.replace(/\.[^.]+$/, ''),
         region: 'Imported locally',
         activity: 'Imported GPX',
-        privacy: 'Private',
-        license: 'Not set',
-        tags: ['imported'],
-        points,
-        ...summary
-      };
-
-      state.trails = [importedTrail, ...state.trails];
-      state.selectedId = importedTrail.id;
-      state.trimStartMeters = 0;
-      state.trimEndMeters = 0;
-      state.menuOpen = false;
-      state.routePlaybackVisible = false;
-      render({ fitTrail: true });
+        tags: ['imported']
+      });
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'The file could not be imported.');
     }
@@ -2319,6 +2422,78 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>('[data-gpx-pick]')?.addEventListener('click', () => {
     document.querySelector<HTMLInputElement>('#gpx-upload')?.click();
   });
+
+  if (INTERVALS_CONNECT_ENABLED) {
+    document.querySelector<HTMLButtonElement>('[data-intervals-toggle]')?.addEventListener('click', () => {
+      state.intervalsPanelOpen = !state.intervalsPanelOpen;
+      render();
+    });
+
+    document.querySelector<HTMLButtonElement>('[data-intervals-load]')?.addEventListener('click', async () => {
+      const apiKey = document.querySelector<HTMLInputElement>('#intervals-api-key')?.value.trim() ?? '';
+      const athleteId = document.querySelector<HTMLInputElement>('#intervals-athlete-id')?.value.trim() ?? '';
+      state.intervalsApiKey = apiKey;
+      state.intervalsAthleteId = athleteId;
+
+      if (!apiKey) {
+        state.intervalsStatus = 'Enter your Intervals.icu API key first.';
+        render();
+        return;
+      }
+
+      state.intervalsBusy = true;
+      state.intervalsStatus = '';
+      render();
+
+      try {
+        const { listRecentActivities } = await import('./integrations/intervals-client');
+        state.intervalsActivities = await listRecentActivities(apiKey, athleteId || undefined);
+        state.intervalsStatus = state.intervalsActivities.length
+          ? ''
+          : 'No activities found in the last 28 days.';
+      } catch (error) {
+        state.intervalsActivities = [];
+        state.intervalsStatus = error instanceof Error ? error.message : 'Could not load activities.';
+      } finally {
+        state.intervalsBusy = false;
+        render();
+      }
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-intervals-import]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const activityId = button.dataset.intervalsImport;
+        const apiKey = state.intervalsApiKey;
+        const activity = state.intervalsActivities.find((candidate) => candidate.id === activityId);
+
+        if (!activityId || !apiKey || !activity) {
+          return;
+        }
+
+        state.intervalsBusy = true;
+        state.intervalsStatus = '';
+        render();
+
+        try {
+          const { importActivityRoute } = await import('./integrations/intervals-client');
+          const points = await importActivityRoute(apiKey, activityId);
+          state.intervalsPanelOpen = false;
+          addImportedTrail(points, {
+            id: `intervals-${activityId}`,
+            title: activity.name,
+            region: 'Intervals.icu',
+            activity: activity.type ?? 'Imported activity',
+            tags: ['intervals.icu'],
+            sourceAttribution: attributionForSource(activity.source)
+          });
+        } catch (error) {
+          state.intervalsBusy = false;
+          state.intervalsStatus = error instanceof Error ? error.message : 'Could not import this activity.';
+          render();
+        }
+      });
+    });
+  }
 
   document.querySelector<HTMLButtonElement>('[data-play-route]')?.addEventListener('click', () => {
     const selectedTrail = state.trails.find((trail) => trail.id === state.selectedId);
