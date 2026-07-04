@@ -40,13 +40,26 @@ jobs:
 
       # Standalone app at the bucket root. Excludes connect/* so this sync's
       # --delete never touches the connected app's files.
+      #
+      # Cache split: hashed asset filenames (assets/*) are immutable and safe
+      # to cache for a year; index.html is not hashed, so it must always be
+      # revalidated — otherwise clients (notably Telegram's Mini App WebView)
+      # can keep serving a stale shell indefinitely after a deploy.
       - name: Upload standalone app
-        run: aws s3 sync dist "s3://${{ vars.AWS_WEB_BUCKET }}" --delete --exclude "connect/*"
+        run: |
+          aws s3 sync dist "s3://${{ vars.AWS_WEB_BUCKET }}" --delete --exclude "connect/*" \
+            --exclude "index.html" --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp dist/index.html "s3://${{ vars.AWS_WEB_BUCKET }}/index.html" \
+            --cache-control "no-cache" --content-type "text/html"
 
       # Intervals.icu-connected app under /connect/, deployed separately so it
       # never shares code or state with the standalone app in the bucket.
       - name: Upload connected app
-        run: aws s3 sync dist-connect "s3://${{ vars.AWS_WEB_BUCKET }}/connect" --delete
+        run: |
+          aws s3 sync dist-connect "s3://${{ vars.AWS_WEB_BUCKET }}/connect" --delete \
+            --exclude "index.html" --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp dist-connect/index.html "s3://${{ vars.AWS_WEB_BUCKET }}/connect/index.html" \
+            --cache-control "no-cache" --content-type "text/html"
 
       - name: Invalidate CDN
         run: aws cloudfront create-invalidation --distribution-id "${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"
