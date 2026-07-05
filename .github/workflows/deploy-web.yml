@@ -28,9 +28,13 @@ jobs:
 
       - name: Build (standalone)
         run: npm run build
+        env:
+          VITE_MML_API_KEY: ${{ secrets.VITE_MML_API_KEY }}
 
       - name: Build (Intervals.icu-connected)
         run: npm run build:connect
+        env:
+          VITE_MML_API_KEY: ${{ secrets.VITE_MML_API_KEY }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
