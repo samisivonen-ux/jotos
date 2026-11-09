@@ -10,9 +10,14 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: jotos-production
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,12 +31,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (standalone)
+      - name: Build standalone
         run: npm run build
         env:
           VITE_MML_API_KEY: ${{ secrets.VITE_MML_API_KEY }}
 
-      - name: Build (Intervals.icu-connected)
+      - name: Build connected variant
         run: npm run build:connect
         env:
           VITE_MML_API_KEY: ${{ secrets.VITE_MML_API_KEY }}
@@ -42,13 +47,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # Standalone app at the bucket root. Excludes connect/* so this sync's
-      # --delete never touches the connected app's files.
-      #
-      # Cache split: hashed asset filenames (assets/*) are immutable and safe
-      # to cache for a year; index.html is not hashed, so it must always be
-      # revalidated — otherwise clients (notably Telegram's Mini App WebView)
-      # can keep serving a stale shell indefinitely after a deploy.
       - name: Upload standalone app
         run: |
           aws s3 sync dist "s3://${{ vars.AWS_WEB_BUCKET }}" --delete --exclude "connect/*" \
@@ -56,8 +54,6 @@ jobs:
           aws s3 cp dist/index.html "s3://${{ vars.AWS_WEB_BUCKET }}/index.html" \
             --cache-control "no-cache" --content-type "text/html"
 
-      # Intervals.icu-connected app under /connect/, deployed separately so it
-      # never shares code or state with the standalone app in the bucket.
       - name: Upload connected app
         run: |
           aws s3 sync dist-connect "s3://${{ vars.AWS_WEB_BUCKET }}/connect" --delete \
@@ -67,3 +63,18 @@ jobs:
 
       - name: Invalidate CDN
         run: aws cloudfront create-invalidation --distribution-id "${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"
+
+      - name: Smoke test production
+        run: |
+          probe() {
+            local url="$1"
+            for attempt in 1 2 3 4 5; do
+              if curl -fsS "$url" | grep -q "<title>Jotos</title>"; then
+                return 0
+              fi
+              sleep $((attempt * 5))
+            done
+            return 1
+          }
+          probe https://d3dom5aih0p5.cloudfront.net/
+          probe https://d3dom5aih0p5.cloudfront.net/connect/
